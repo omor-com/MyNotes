@@ -40,8 +40,7 @@ class GoogleDriveManager(
     companion object {
         const val BACKUP_FILE_NAME = "MyNotes_Backup.json"
         val SCOPES: List<String> = listOf(
-            DriveScopes.DRIVE_FILE,
-            DriveScopes.DRIVE_APPDATA
+            DriveScopes.DRIVE_FILE
         )
     }
 

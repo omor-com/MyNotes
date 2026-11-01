@@ -40,6 +40,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -230,72 +231,93 @@ fun SettingsScreen(
                         }
                     }
 
-                    // Connected details & controls
-                    if (uiState.googleDriveAccount != null) {
-                        Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                        // Auto-Backup Switch
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Auto-Backup Notes",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Automatically backs up on note changes and daily",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = uiState.autoDriveBackupEnabled,
-                                onCheckedChange = { viewModel.toggleAutoDriveBackup(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = MaterialTheme.colorScheme.primary
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Last backup status
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
+                    // Automatic Daily Backup Switch (always visible)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (uiState.lastDriveBackupTimestamp > 0) {
-                                    "Last synced: ${SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.getDefault()).format(Date(uiState.lastDriveBackupTimestamp))}"
-                                } else {
-                                    "Never synced yet"
-                                },
+                                text = "Automatic Daily Backup",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Back up notes to Google Drive automatically once per day and on note edits",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
 
-                        // Drive Actions: Backup Now & Restore
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Button(
-                                onClick = {
+                        Switch(
+                            modifier = Modifier.testTag("auto_backup_toggle"),
+                            checked = uiState.autoDriveBackupEnabled,
+                            onCheckedChange = { isChecked ->
+                                viewModel.toggleAutoDriveBackup(isChecked)
+                                if (isChecked && uiState.googleDriveAccount == null) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Connect Google Drive for automatic cloud backup")
+                                    }
+                                    googleSignInLauncher.launch(viewModel.getGoogleSignInIntent())
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Last backup status
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (uiState.lastDriveBackupTimestamp > 0) {
+                                "Last synced: ${SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.getDefault()).format(Date(uiState.lastDriveBackupTimestamp))}"
+                            } else {
+                                "No cloud backup created yet"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Drive Actions: Backup Now & Restore (always visible)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("backup_now_button"),
+                            onClick = {
+                                if (uiState.googleDriveAccount == null) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Connect Google Drive first to back up your notes")
+                                    }
+                                    googleSignInLauncher.launch(viewModel.getGoogleSignInIntent())
+                                } else {
                                     viewModel.backupToGoogleDrive { res ->
                                         scope.launch {
                                             res.onSuccess {
@@ -305,31 +327,54 @@ fun SettingsScreen(
                                             }
                                         }
                                     }
-                                },
-                                enabled = !uiState.isDriveOperationInProgress,
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                if (uiState.isDriveOperationInProgress) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp,
-                                        color = Color.White
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
                                 }
-                                Text("Backup Now")
+                            },
+                            enabled = !uiState.isDriveOperationInProgress,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            if (uiState.isDriveOperationInProgress) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Outlined.CloudUpload,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                             }
+                            Text("Backup Now")
+                        }
 
-                            OutlinedButton(
-                                onClick = { showDriveRestoreConfirmDialog = true },
-                                enabled = !uiState.isDriveOperationInProgress,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Restore")
-                            }
+                        OutlinedButton(
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("drive_restore_button"),
+                            onClick = {
+                                if (uiState.googleDriveAccount == null) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Connect Google Drive first to restore backups")
+                                    }
+                                    googleSignInLauncher.launch(viewModel.getGoogleSignInIntent())
+                                } else {
+                                    showDriveRestoreConfirmDialog = true
+                                }
+                            },
+                            enabled = !uiState.isDriveOperationInProgress,
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.CloudDownload,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Restore")
                         }
                     }
                 }

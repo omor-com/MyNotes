@@ -48,7 +48,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "mynotes_database.db"
                 )
                     .addCallback(DatabaseCallback())
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                 INSTANCE = instance
                 instance

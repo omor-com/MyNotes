@@ -42,15 +42,15 @@ jobs:
       - name: Grant Execute Permission to gradlew
         run: chmod +x ./gradlew
 
-      - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest --continue --no-daemon
-
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace --no-daemon
 
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest --continue --no-daemon
+
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
-        if: success()
+        if: always()
         with:
           name: MyNotes-v1.0-debug
           path: app/build/outputs/apk/debug/app-debug.apk

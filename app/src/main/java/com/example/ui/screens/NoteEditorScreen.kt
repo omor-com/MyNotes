@@ -29,6 +29,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
@@ -239,7 +240,7 @@ fun NoteEditorScreen(
 
                             // Manage Tags
                             DropdownMenuItem(
-                                leadingIcon = { Icon(Icons.Outlined.Label, contentDescription = null) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Label, contentDescription = null) },
                                 text = { Text("Tags (${uiState.selectedTags.size})") },
                                 onClick = {
                                     showMenu = false

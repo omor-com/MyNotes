@@ -52,12 +52,23 @@ A polished, fully functional, offline-first native Android note-taking applicati
     - JSON backup export via Android Storage Access Framework (SAF).
     - Backup restoration with validation and conflict resolution (Merge vs Replace).
 
-## Tech Stack & Architecture
+## GitHub Actions CI/CD & Building
 
-- **Language:** Kotlin
-- **UI Framework:** Jetpack Compose (Material 3)
-- **Architecture:** MVVM (Model-View-ViewModel) + Repository Pattern
-- **Persistence:** Room Database (SQLite) + DataStore Preferences
-- **Asynchrony:** Kotlin Coroutines & Reactive `StateFlow`
-- **Navigation:** Jetpack Navigation Compose
-- **Typography:** Plus Jakarta Sans & Noto Sans Bengali local bundled fonts
+This repository includes an automated GitHub Actions CI/CD workflow (`.github/workflows/android.yml`):
+
+1. **Automatic Triggers:**
+   - On every `git push` or `pull_request` to `main` / `master`.
+   - On manual trigger via the **Actions** tab in GitHub (**Run workflow** button).
+
+2. **What the Workflow Does:**
+   - Sets up OpenJDK 17 with Gradle dependency caching.
+   - Automatically decodes `debug.keystore` from `debug.keystore.base64` so no keystore signing errors occur on GitHub runners.
+   - Executes unit & integration tests (`testDebugUnitTest`).
+   - Builds the debug APK (`./gradlew assembleDebug`).
+   - Automatically uploads the compiled APK (`MyNotes-v1.0-debug`) as a downloadable build artifact in the GitHub Actions run summary.
+
+3. **To Download the APK from GitHub:**
+   - Go to your repository on GitHub.
+   - Click on the **Actions** tab.
+   - Click on the latest workflow run.
+   - Scroll down to the **Artifacts** section and click **MyNotes-v1.0-debug** to download the APK.

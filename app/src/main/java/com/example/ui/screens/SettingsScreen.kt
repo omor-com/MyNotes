@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.outlined.Sort
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.BrightnessMedium
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.CloudUpload
@@ -27,7 +33,6 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,11 +42,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -68,6 +76,9 @@ import com.example.data.preferences.ThemePreference
 import com.example.data.preferences.ViewMode
 import com.example.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,8 +94,24 @@ fun SettingsScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showFontSizeDialog by remember { mutableStateOf(false) }
     var showSortOrderDialog by remember { mutableStateOf(false) }
-    var showRestoreConfirmDialog by remember { mutableStateOf(false) }
+    var showLocalRestoreConfirmDialog by remember { mutableStateOf(false) }
+    var showDriveRestoreConfirmDialog by remember { mutableStateOf(false) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+
+    // Google Sign-In Activity Result Launcher
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        viewModel.onGoogleSignInResult(result.data) { res ->
+            scope.launch {
+                res.onSuccess { email ->
+                    snackbarHostState.showSnackbar("Connected Google Drive: $email")
+                }.onFailure { e ->
+                    snackbarHostState.showSnackbar("Google Sign-In failed: ${e.localizedMessage ?: "Unknown error"}")
+                }
+            }
+        }
+    }
 
     // SAF Export Launcher
     val exportLauncher = rememberLauncherForActivityResult(
@@ -111,7 +138,7 @@ fun SettingsScreen(
     ) { uri: Uri? ->
         if (uri != null) {
             pendingRestoreUri = uri
-            showRestoreConfirmDialog = true
+            showLocalRestoreConfirmDialog = true
         }
     }
 
@@ -141,7 +168,176 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Section 1: Appearance & Preferences
+            // Section 1: Google Drive Cloud Backup
+            SettingsSectionHeader(title = "GOOGLE DRIVE BACKUP (V3)")
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Account row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (uiState.googleDriveAccount != null) Icons.Default.CloudDone else Icons.Default.Cloud,
+                            contentDescription = null,
+                            tint = if (uiState.googleDriveAccount != null) Color(0xFF43A047) else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Google Drive Account",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = uiState.googleDriveAccount ?: "Not connected (tap to connect)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (uiState.googleDriveAccount != null) Color(0xFF43A047) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        if (uiState.googleDriveAccount != null) {
+                            TextButton(
+                                onClick = {
+                                    viewModel.disconnectGoogleDrive { res ->
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Disconnected from Google Drive")
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Disconnect", color = Color(0xFFE53935))
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    googleSignInLauncher.launch(viewModel.getGoogleSignInIntent())
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text("Connect")
+                            }
+                        }
+                    }
+
+                    // Connected details & controls
+                    if (uiState.googleDriveAccount != null) {
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Auto-Backup Switch
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Auto-Backup Notes",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Automatically backs up on note changes and daily",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = uiState.autoDriveBackupEnabled,
+                                onCheckedChange = { viewModel.toggleAutoDriveBackup(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Last backup status
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (uiState.lastDriveBackupTimestamp > 0) {
+                                    "Last synced: ${SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.getDefault()).format(Date(uiState.lastDriveBackupTimestamp))}"
+                                } else {
+                                    "Never synced yet"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Drive Actions: Backup Now & Restore
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    viewModel.backupToGoogleDrive { res ->
+                                        scope.launch {
+                                            res.onSuccess {
+                                                snackbarHostState.showSnackbar("Backup uploaded to Google Drive successfully!")
+                                            }.onFailure { e ->
+                                                snackbarHostState.showSnackbar("Drive upload failed: ${e.localizedMessage ?: "Network error"}")
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !uiState.isDriveOperationInProgress,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (uiState.isDriveOperationInProgress) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                Text("Backup Now")
+                            }
+
+                            OutlinedButton(
+                                onClick = { showDriveRestoreConfirmDialog = true },
+                                enabled = !uiState.isDriveOperationInProgress,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Restore")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Section 2: Appearance & Preferences
             SettingsSectionHeader(title = "APPEARANCE & DISPLAY")
 
             SettingsItemCard(
@@ -191,8 +387,8 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Section 2: Data & Trash
-            SettingsSectionHeader(title = "DATA & STORAGE")
+            // Section 3: Data & Local Backup
+            SettingsSectionHeader(title = "LOCAL BACKUP & TRASH")
 
             SettingsItemCard(
                 icon = Icons.Outlined.Delete,
@@ -206,8 +402,8 @@ fun SettingsScreen(
 
             SettingsItemCard(
                 icon = Icons.Outlined.CloudUpload,
-                title = "Export Backup (JSON)",
-                subtitle = "Save notes, checklists, folders, and tags to a file",
+                title = "Export Local Backup (JSON)",
+                subtitle = "Save notes, checklists, folders, and tags to a device file",
                 onClick = {
                     val timestamp = System.currentTimeMillis()
                     exportLauncher.launch("MyNotes_Backup_$timestamp.json")
@@ -219,7 +415,7 @@ fun SettingsScreen(
 
             SettingsItemCard(
                 icon = Icons.Outlined.CloudDownload,
-                title = "Restore from Backup",
+                title = "Restore from Local File",
                 subtitle = "Import notes from a previously saved JSON file",
                 onClick = {
                     importLauncher.launch(arrayOf("application/json", "*/*"))
@@ -229,7 +425,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Section 3: About App
+            // Section 4: About App
             SettingsSectionHeader(title = "ABOUT")
 
             Card(
@@ -238,7 +434,7 @@ fun SettingsScreen(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -266,7 +462,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "100% Offline, private, and lightweight note-taking application. Supports English and Bengali note content with rich text formatting, checklists, folders, and tags.",
+                        text = "Clean, private, offline-first note-taking application with Google Drive v3 automatic backup and local JSON export/restore.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -275,6 +471,60 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    // Google Drive Restore Confirmation Dialog
+    if (showDriveRestoreConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDriveRestoreConfirmDialog = false },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("Restore from Google Drive?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    text = "Would you like to merge notes from Google Drive with your local notes, or replace all local data?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDriveRestoreConfirmDialog = false
+                        viewModel.restoreFromGoogleDrive(replaceExisting = false) { result ->
+                            scope.launch {
+                                result.onSuccess { stats ->
+                                    snackbarHostState.showSnackbar("Restored ${stats.noteCount} notes from Google Drive!")
+                                }.onFailure { e ->
+                                    snackbarHostState.showSnackbar("Drive restore error: ${e.localizedMessage ?: "Error"}")
+                                }
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Merge Notes")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDriveRestoreConfirmDialog = false
+                        viewModel.restoreFromGoogleDrive(replaceExisting = true) { result ->
+                            scope.launch {
+                                result.onSuccess { stats ->
+                                    snackbarHostState.showSnackbar("Replaced all data with ${stats.noteCount} notes from Drive!")
+                                }.onFailure { e ->
+                                    snackbarHostState.showSnackbar("Drive restore error: ${e.localizedMessage ?: "Error"}")
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Text("Replace All", color = Color(0xFFE53935))
+                }
+            }
+        )
     }
 
     // Theme Selection Dialog
@@ -406,16 +656,16 @@ fun SettingsScreen(
         )
     }
 
-    // Restore Confirmation Dialog
-    if (showRestoreConfirmDialog && pendingRestoreUri != null) {
+    // Local Restore Confirmation Dialog
+    if (showLocalRestoreConfirmDialog && pendingRestoreUri != null) {
         val uri = pendingRestoreUri!!
         AlertDialog(
             onDismissRequest = {
-                showRestoreConfirmDialog = false
+                showLocalRestoreConfirmDialog = false
                 pendingRestoreUri = null
             },
             shape = RoundedCornerShape(24.dp),
-            title = { Text("Restore Backup?", fontWeight = FontWeight.Bold) },
+            title = { Text("Restore Local Backup?", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
                     text = "Would you like to merge the backup items with your current notes, or replace all existing data?",
@@ -426,7 +676,7 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        showRestoreConfirmDialog = false
+                        showLocalRestoreConfirmDialog = false
                         viewModel.importBackup(uri, replaceExisting = false) { result ->
                             scope.launch {
                                 result.onSuccess { stats ->
@@ -447,7 +697,7 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(
                     onClick = {
-                        showRestoreConfirmDialog = false
+                        showLocalRestoreConfirmDialog = false
                         viewModel.importBackup(uri, replaceExisting = true) { result ->
                             scope.launch {
                                 result.onSuccess { stats ->
@@ -497,7 +747,7 @@ private fun SettingsItemCard(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
             modifier = Modifier

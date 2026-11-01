@@ -3,7 +3,9 @@ package com.example.data.preferences
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -43,6 +45,11 @@ class UserPreferencesRepository(private val context: Context) {
         val FONT_SIZE = stringPreferencesKey("font_size")
         val SORT_ORDER = stringPreferencesKey("sort_order")
         val DEFAULT_NOTE_COLOR = stringPreferencesKey("default_note_color")
+
+        // Google Drive Backup Keys
+        val GOOGLE_DRIVE_ACCOUNT = stringPreferencesKey("google_drive_account")
+        val AUTO_DRIVE_BACKUP = booleanPreferencesKey("auto_drive_backup")
+        val LAST_DRIVE_BACKUP = longPreferencesKey("last_drive_backup")
     }
 
     val themePreference: Flow<ThemePreference> = context.dataStore.data.map { preferences ->
@@ -67,6 +74,18 @@ class UserPreferencesRepository(private val context: Context) {
 
     val defaultNoteColor: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.DEFAULT_NOTE_COLOR]
+    }
+
+    val googleDriveAccount: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.GOOGLE_DRIVE_ACCOUNT]
+    }
+
+    val autoDriveBackupEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.AUTO_DRIVE_BACKUP] ?: true
+    }
+
+    val lastDriveBackupTimestamp: Flow<Long> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.LAST_DRIVE_BACKUP] ?: 0L
     }
 
     suspend fun setThemePreference(theme: ThemePreference) {
@@ -100,6 +119,28 @@ class UserPreferencesRepository(private val context: Context) {
             } else {
                 preferences[PreferencesKeys.DEFAULT_NOTE_COLOR] = colorHex
             }
+        }
+    }
+
+    suspend fun setGoogleDriveAccount(accountEmail: String?) {
+        context.dataStore.edit { preferences ->
+            if (accountEmail == null) {
+                preferences.remove(PreferencesKeys.GOOGLE_DRIVE_ACCOUNT)
+            } else {
+                preferences[PreferencesKeys.GOOGLE_DRIVE_ACCOUNT] = accountEmail
+            }
+        }
+    }
+
+    suspend fun setAutoDriveBackupEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.AUTO_DRIVE_BACKUP] = enabled
+        }
+    }
+
+    suspend fun setLastDriveBackupTimestamp(timestamp: Long) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_DRIVE_BACKUP] = timestamp
         }
     }
 }

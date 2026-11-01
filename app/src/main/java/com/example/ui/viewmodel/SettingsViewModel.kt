@@ -1,5 +1,6 @@
 package com.example.ui.viewmodel
 
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,7 +24,11 @@ data class SettingsUiState(
     val sortOrder: SortOrder = SortOrder.MODIFIED_DESC,
     val defaultNoteColor: String? = null,
     val isOperationInProgress: Boolean = false,
-    val statusMessage: String? = null
+    val statusMessage: String? = null,
+    val googleDriveAccount: String? = null,
+    val autoDriveBackupEnabled: Boolean = true,
+    val lastDriveBackupTimestamp: Long = 0L,
+    val isDriveOperationInProgress: Boolean = false
 )
 
 private data class SettingsPrefState(
@@ -34,11 +39,18 @@ private data class SettingsPrefState(
     val defaultNoteColor: String?
 )
 
+private data class DrivePrefState(
+    val account: String?,
+    val autoBackup: Boolean,
+    val lastBackup: Long
+)
+
 class SettingsViewModel(
     private val repository: NoteRepository
 ) : ViewModel() {
 
     private val _isOperationInProgress = MutableStateFlow(false)
+    private val _isDriveOperationInProgress = MutableStateFlow(false)
     private val _statusMessage = MutableStateFlow<String?>(null)
 
     private val prefStateFlow = combine(
@@ -51,11 +63,21 @@ class SettingsViewModel(
         SettingsPrefState(theme, viewMode, fontSize, sortOrder, defaultColor)
     }
 
+    private val drivePrefFlow = combine(
+        repository.googleDriveAccount,
+        repository.autoDriveBackupEnabled,
+        repository.lastDriveBackupTimestamp
+    ) { account, autoBackup, lastBackup ->
+        DrivePrefState(account, autoBackup, lastBackup)
+    }
+
     val uiState: StateFlow<SettingsUiState> = combine(
         prefStateFlow,
+        drivePrefFlow,
         _isOperationInProgress,
+        _isDriveOperationInProgress,
         _statusMessage
-    ) { prefs, inProgress, message ->
+    ) { prefs, drive, inProgress, driveProgress, message ->
         SettingsUiState(
             theme = prefs.theme,
             viewMode = prefs.viewMode,
@@ -63,7 +85,11 @@ class SettingsViewModel(
             sortOrder = prefs.sortOrder,
             defaultNoteColor = prefs.defaultNoteColor,
             isOperationInProgress = inProgress,
-            statusMessage = message
+            statusMessage = message,
+            googleDriveAccount = drive.account,
+            autoDriveBackupEnabled = drive.autoBackup,
+            lastDriveBackupTimestamp = drive.lastBackup,
+            isDriveOperationInProgress = driveProgress
         )
     }.stateIn(
         scope = viewModelScope,
@@ -105,6 +131,55 @@ class SettingsViewModel(
             _isOperationInProgress.value = true
             val result = repository.importBackup(uri, replaceExisting)
             _isOperationInProgress.value = false
+            onResult(result)
+        }
+    }
+
+    // Google Drive
+    fun getGoogleSignInIntent(): Intent = repository.getGoogleSignInClient().signInIntent
+
+    fun onGoogleSignInResult(data: Intent?, onResult: (Result<String>) -> Unit) {
+        viewModelScope.launch {
+            val result = repository.handleGoogleSignInResult(data)
+            result.onSuccess { account ->
+                val email = account.email ?: "Connected Account"
+                repository.setGoogleDriveAccount(email)
+                onResult(Result.success(email))
+            }.onFailure { e ->
+                onResult(Result.failure(e))
+            }
+        }
+    }
+
+    fun disconnectGoogleDrive(onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            _isDriveOperationInProgress.value = true
+            val result = repository.disconnectGoogleDrive()
+            _isDriveOperationInProgress.value = false
+            onResult(result)
+        }
+    }
+
+    fun toggleAutoDriveBackup(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setAutoDriveBackupEnabled(enabled)
+        }
+    }
+
+    fun backupToGoogleDrive(onResult: (Result<String>) -> Unit) {
+        viewModelScope.launch {
+            _isDriveOperationInProgress.value = true
+            val result = repository.backupToGoogleDrive()
+            _isDriveOperationInProgress.value = false
+            onResult(result)
+        }
+    }
+
+    fun restoreFromGoogleDrive(replaceExisting: Boolean, onResult: (Result<BackupStats>) -> Unit) {
+        viewModelScope.launch {
+            _isDriveOperationInProgress.value = true
+            val result = repository.restoreFromGoogleDrive(replaceExisting)
+            _isDriveOperationInProgress.value = false
             onResult(result)
         }
     }

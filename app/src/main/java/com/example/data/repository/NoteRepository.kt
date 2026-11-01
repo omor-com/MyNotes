@@ -1,8 +1,10 @@
 package com.example.data.repository
 
+import android.content.Intent
 import android.net.Uri
 import com.example.data.backup.BackupManager
 import com.example.data.backup.BackupStats
+import com.example.data.backup.GoogleDriveBackupManager
 import com.example.data.local.dao.ChecklistDao
 import com.example.data.local.dao.FolderDao
 import com.example.data.local.dao.NoteDao
@@ -18,7 +20,10 @@ import com.example.data.preferences.SortOrder
 import com.example.data.preferences.ThemePreference
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.preferences.ViewMode
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 class NoteRepository(
     private val noteDao: NoteDao,
@@ -26,7 +31,8 @@ class NoteRepository(
     private val tagDao: TagDao,
     private val checklistDao: ChecklistDao,
     private val preferencesRepository: UserPreferencesRepository,
-    private val backupManager: BackupManager
+    private val backupManager: BackupManager,
+    private val googleDriveBackupManager: GoogleDriveBackupManager
 ) {
 
     // Notes
@@ -37,9 +43,16 @@ class NoteRepository(
 
     suspend fun getRawNoteById(noteId: Long): NoteEntity? = noteDao.getNoteById(noteId)
 
-    suspend fun createNote(note: NoteEntity): Long = noteDao.insertNote(note)
+    suspend fun createNote(note: NoteEntity): Long {
+        val id = noteDao.insertNote(note)
+        triggerAutoDriveBackupIfNeeded()
+        return id
+    }
 
-    suspend fun updateNote(note: NoteEntity) = noteDao.updateNote(note)
+    suspend fun updateNote(note: NoteEntity) {
+        noteDao.updateNote(note)
+        triggerAutoDriveBackupIfNeeded()
+    }
 
     suspend fun setDeleted(noteId: Long, isDeleted: Boolean) = noteDao.setDeleted(noteId, isDeleted)
 
@@ -110,8 +123,78 @@ class NoteRepository(
     suspend fun setSortOrder(order: SortOrder) = preferencesRepository.setSortOrder(order)
     suspend fun setDefaultNoteColor(colorHex: String?) = preferencesRepository.setDefaultNoteColor(colorHex)
 
-    // Backup & Restore
+    // Local Backup & Restore
     suspend fun exportBackup(uri: Uri): Result<BackupStats> = backupManager.exportBackup(uri)
     suspend fun importBackup(uri: Uri, replaceExisting: Boolean): Result<BackupStats> =
         backupManager.importBackup(uri, replaceExisting)
+
+    // Google Drive Backup & Restore
+    val googleDriveAccount: Flow<String?> = preferencesRepository.googleDriveAccount
+    val autoDriveBackupEnabled: Flow<Boolean> = preferencesRepository.autoDriveBackupEnabled
+    val lastDriveBackupTimestamp: Flow<Long> = preferencesRepository.lastDriveBackupTimestamp
+
+    fun getGoogleSignInClient(): GoogleSignInClient = googleDriveBackupManager.getGoogleSignInClient()
+
+    fun handleGoogleSignInResult(data: Intent?): Result<GoogleSignInAccount> =
+        googleDriveBackupManager.handleSignInResult(data)
+
+    suspend fun setGoogleDriveAccount(email: String?) = preferencesRepository.setGoogleDriveAccount(email)
+
+    suspend fun setAutoDriveBackupEnabled(enabled: Boolean) = preferencesRepository.setAutoDriveBackupEnabled(enabled)
+
+    suspend fun disconnectGoogleDrive(): Result<Unit> {
+        val result = googleDriveBackupManager.signOut()
+        if (result.isSuccess) {
+            preferencesRepository.setGoogleDriveAccount(null)
+        }
+        return result
+    }
+
+    suspend fun backupToGoogleDrive(): Result<String> {
+        val json = backupManager.generateBackupJsonString()
+        val uploadResult = googleDriveBackupManager.uploadBackup(json)
+        if (uploadResult.isSuccess) {
+            preferencesRepository.setLastDriveBackupTimestamp(System.currentTimeMillis())
+        }
+        return uploadResult
+    }
+
+    suspend fun restoreFromGoogleDrive(replaceExisting: Boolean): Result<BackupStats> {
+        val downloadResult = googleDriveBackupManager.downloadBackup()
+        return if (downloadResult.isSuccess) {
+            val jsonContent = downloadResult.getOrThrow()
+            backupManager.importBackupFromJsonString(jsonContent, replaceExisting)
+        } else {
+            Result.failure(downloadResult.exceptionOrNull() ?: Exception("Failed to download Drive backup"))
+        }
+    }
+
+    suspend fun checkDailyDriveBackupNeeded(): Boolean {
+        val account = preferencesRepository.googleDriveAccount.first() ?: return false
+        val autoBackup = preferencesRepository.autoDriveBackupEnabled.first()
+        if (!autoBackup) return false
+
+        val lastBackup = preferencesRepository.lastDriveBackupTimestamp.first()
+        val oneDayMillis = 24 * 60 * 60 * 1000L
+        val now = System.currentTimeMillis()
+
+        return (now - lastBackup) > oneDayMillis
+    }
+
+    private var lastAutoBackupTime = 0L
+
+    suspend fun triggerAutoDriveBackupIfNeeded() {
+        val account = preferencesRepository.googleDriveAccount.first() ?: return
+        val autoBackup = preferencesRepository.autoDriveBackupEnabled.first()
+        if (!autoBackup) return
+
+        val now = System.currentTimeMillis()
+        // Cooldown: at least 2 minutes between auto-backups to prevent API rate limiting while typing
+        if (now - lastAutoBackupTime < 2 * 60 * 1000L) return
+
+        lastAutoBackupTime = now
+        runCatching {
+            backupToGoogleDrive()
+        }
+    }
 }

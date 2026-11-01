@@ -1,6 +1,6 @@
 {
   "name": "MyNotes",
-  "description": "Clean, elegant, offline-first native Android note-taking app with rich text, checklist notes, folders, tags, search, and local backup.",
+  "description": "Clean, elegant, offline-first native Android note-taking app with rich text, checklist notes, folders, tags, search, and Google Drive cloud backup.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

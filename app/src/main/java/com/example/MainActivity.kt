@@ -22,6 +22,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 import com.example.data.backup.BackupManager
 import com.example.data.local.database.AppDatabase
 import com.example.data.preferences.ThemePreference
@@ -60,14 +63,23 @@ class MainActivity : ComponentActivity() {
             tagDao = database.tagDao(),
             checklistDao = database.checklistDao()
         )
+        val googleDriveBackupManager = com.example.data.backup.GoogleDriveBackupManager(applicationContext)
         val noteRepository = NoteRepository(
             noteDao = database.noteDao(),
             folderDao = database.folderDao(),
             tagDao = database.tagDao(),
             checklistDao = database.checklistDao(),
             preferencesRepository = preferencesRepo,
-            backupManager = backupManager
+            backupManager = backupManager,
+            googleDriveBackupManager = googleDriveBackupManager
         )
+
+        // Perform daily automatic Google Drive backup in background if due
+        CoroutineScope(Dispatchers.IO).launch {
+            if (noteRepository.checkDailyDriveBackupNeeded()) {
+                noteRepository.backupToGoogleDrive()
+            }
+        }
 
         setContent {
             val themePref by preferencesRepo.themePreference.collectAsState(initial = ThemePreference.SYSTEM)

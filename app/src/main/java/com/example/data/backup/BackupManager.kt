@@ -33,90 +33,100 @@ class BackupManager(
     private val checklistDao: ChecklistDao
 ) {
 
+    suspend fun generateBackupJsonString(): String = withContext(Dispatchers.IO) {
+        val notes = noteDao.getAllRawNotes()
+        val folders = folderDao.getAllRawFolders()
+        val tags = tagDao.getAllRawTags()
+        val crossRefs = tagDao.getAllRawCrossRefs()
+        val checklistItems = checklistDao.getAllRawItems()
+
+        val rootJson = JSONObject().apply {
+            put("app", "MyNotes")
+            put("version", 1)
+            put("exportedAt", System.currentTimeMillis())
+
+            // Folders
+            val foldersArray = JSONArray()
+            folders.forEach { f ->
+                foldersArray.put(JSONObject().apply {
+                    put("id", f.id)
+                    put("name", f.name)
+                    put("colorHex", f.colorHex)
+                    put("createdAt", f.createdAt)
+                    put("updatedAt", f.updatedAt)
+                })
+            }
+            put("folders", foldersArray)
+
+            // Tags
+            val tagsArray = JSONArray()
+            tags.forEach { t ->
+                tagsArray.put(JSONObject().apply {
+                    put("id", t.id)
+                    put("name", t.name)
+                })
+            }
+            put("tags", tagsArray)
+
+            // Notes
+            val notesArray = JSONArray()
+            notes.forEach { n ->
+                notesArray.put(JSONObject().apply {
+                    put("id", n.id)
+                    put("title", n.title)
+                    put("content", n.content)
+                    put("spansJson", n.spansJson)
+                    put("contentType", n.contentType)
+                    if (n.folderId != null) put("folderId", n.folderId)
+                    put("isPinned", n.isPinned)
+                    put("isFavorite", n.isFavorite)
+                    put("isArchived", n.isArchived)
+                    put("isDeleted", n.isDeleted)
+                    if (n.colorHex != null) put("colorHex", n.colorHex)
+                    put("createdAt", n.createdAt)
+                    put("updatedAt", n.updatedAt)
+                })
+            }
+            put("notes", notesArray)
+
+            // NoteTagCrossRefs
+            val crossRefsArray = JSONArray()
+            crossRefs.forEach { cr ->
+                crossRefsArray.put(JSONObject().apply {
+                    put("noteId", cr.noteId)
+                    put("tagId", cr.tagId)
+                })
+            }
+            put("crossRefs", crossRefsArray)
+
+            // ChecklistItems
+            val checklistArray = JSONArray()
+            checklistItems.forEach { c ->
+                checklistArray.put(JSONObject().apply {
+                    put("id", c.id)
+                    put("noteId", c.noteId)
+                    put("text", c.text)
+                    put("isChecked", c.isChecked)
+                    put("orderIndex", c.orderIndex)
+                })
+            }
+            put("checklistItems", checklistArray)
+        }
+
+        rootJson.toString(2)
+    }
+
     suspend fun exportBackup(uri: Uri): Result<BackupStats> = withContext(Dispatchers.IO) {
         runCatching {
+            val jsonString = generateBackupJsonString()
+            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                outputStream.write(jsonString.toByteArray(Charsets.UTF_8))
+            } ?: throw IllegalStateException("Could not open output stream for URI")
+
             val notes = noteDao.getAllRawNotes()
             val folders = folderDao.getAllRawFolders()
             val tags = tagDao.getAllRawTags()
-            val crossRefs = tagDao.getAllRawCrossRefs()
             val checklistItems = checklistDao.getAllRawItems()
-
-            val rootJson = JSONObject().apply {
-                put("app", "MyNotes")
-                put("version", 1)
-                put("exportedAt", System.currentTimeMillis())
-
-                // Folders
-                val foldersArray = JSONArray()
-                folders.forEach { f ->
-                    foldersArray.put(JSONObject().apply {
-                        put("id", f.id)
-                        put("name", f.name)
-                        put("colorHex", f.colorHex)
-                        put("createdAt", f.createdAt)
-                        put("updatedAt", f.updatedAt)
-                    })
-                }
-                put("folders", foldersArray)
-
-                // Tags
-                val tagsArray = JSONArray()
-                tags.forEach { t ->
-                    tagsArray.put(JSONObject().apply {
-                        put("id", t.id)
-                        put("name", t.name)
-                    })
-                }
-                put("tags", tagsArray)
-
-                // Notes
-                val notesArray = JSONArray()
-                notes.forEach { n ->
-                    notesArray.put(JSONObject().apply {
-                        put("id", n.id)
-                        put("title", n.title)
-                        put("content", n.content)
-                        put("spansJson", n.spansJson)
-                        put("contentType", n.contentType)
-                        if (n.folderId != null) put("folderId", n.folderId)
-                        put("isPinned", n.isPinned)
-                        put("isFavorite", n.isFavorite)
-                        put("isArchived", n.isArchived)
-                        put("isDeleted", n.isDeleted)
-                        if (n.colorHex != null) put("colorHex", n.colorHex)
-                        put("createdAt", n.createdAt)
-                        put("updatedAt", n.updatedAt)
-                    })
-                }
-                put("notes", notesArray)
-
-                // NoteTagCrossRefs
-                val crossRefsArray = JSONArray()
-                crossRefs.forEach { cr ->
-                    crossRefsArray.put(JSONObject().apply {
-                        put("noteId", cr.noteId)
-                        put("tagId", cr.tagId)
-                    })
-                }
-                put("crossRefs", crossRefsArray)
-
-                // ChecklistItems
-                val checklistArray = JSONArray()
-                checklistItems.forEach { c ->
-                    checklistArray.put(JSONObject().apply {
-                        put("id", c.id)
-                        put("noteId", c.noteId)
-                        put("text", c.text)
-                        put("isChecked", c.isChecked)
-                        put("orderIndex", c.orderIndex)
-                    })
-                }
-                put("checklistItems", checklistArray)
-            }
-
-            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                outputStream.write(rootJson.toString(2).toByteArray(Charsets.UTF_8))
-            } ?: throw IllegalStateException("Could not open output stream for URI")
 
             BackupStats(
                 noteCount = notes.size,
@@ -127,12 +137,8 @@ class BackupManager(
         }
     }
 
-    suspend fun importBackup(uri: Uri, replaceExisting: Boolean = false): Result<BackupStats> = withContext(Dispatchers.IO) {
+    suspend fun importBackupFromJsonString(content: String, replaceExisting: Boolean = false): Result<BackupStats> = withContext(Dispatchers.IO) {
         runCatching {
-            val content = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).readText()
-            } ?: throw IllegalStateException("Could not read backup file")
-
             val rootJson = JSONObject(content)
             val app = rootJson.optString("app")
             if (app != "MyNotes" && !rootJson.has("notes")) {
@@ -269,5 +275,13 @@ class BackupManager(
                 checklistItemCount = importedChecklist
             )
         }
+    }
+
+    suspend fun importBackup(uri: Uri, replaceExisting: Boolean = false): Result<BackupStats> = withContext(Dispatchers.IO) {
+        val content = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).readText()
+        } ?: throw IllegalStateException("Could not read backup file from URI")
+
+        importBackupFromJsonString(content, replaceExisting)
     }
 }

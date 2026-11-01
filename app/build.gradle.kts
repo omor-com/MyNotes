@@ -68,6 +68,16 @@ android {
     includeInApk = false
     includeInBundle = true
   }
+  packaging {
+    resources {
+      excludes += "/META-INF/{AL2.0,LGPL2.1}"
+      excludes += "META-INF/DEPENDENCIES"
+      excludes += "META-INF/LICENSE"
+      excludes += "META-INF/LICENSE.txt"
+      excludes += "META-INF/NOTICE"
+      excludes += "META-INF/NOTICE.txt"
+    }
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
@@ -125,6 +135,15 @@ dependencies {
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   implementation(libs.play.services.auth)
+  implementation(libs.google.api.client.android) {
+    exclude(group = "org.apache.httpcomponents")
+    exclude(module = "guava-jdk5")
+  }
+  implementation(libs.google.api.services.drive) {
+    exclude(group = "org.apache.httpcomponents")
+    exclude(module = "guava-jdk5")
+  }
+  implementation(libs.google.http.client.gson)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
